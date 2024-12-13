@@ -3,7 +3,6 @@ import pandas as pd
 import imageio
 import os
 import subprocess
-import torch
 from multiprocessing import Pool
 from itertools import cycle
 import warnings
@@ -17,7 +16,6 @@ from skimage.transform import resize
 import librosa
 import soundfile as sf
 import pickle
-import face_alignment
 warnings.filterwarnings("ignore")
 
 DEVNULL = open(os.devnull, 'wb')
