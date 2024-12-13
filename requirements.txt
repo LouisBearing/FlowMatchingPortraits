@@ -1,0 +1,15 @@
+pyworld
+pyyaml
+pytorch-lightning
+python_speech_features
+ffmpeg-python
+imageio
+imageio-ffmpeg
+numpy
+opencv-python
+pandas
+requests
+scikit-image
+scikit-learn
+scipy
+av
