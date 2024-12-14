@@ -5,25 +5,44 @@ import pickle
 from torch.utils.data import Dataset
 from .utils import *
 
+######
+####
+### La classe principale pour le chargement des données
+####
+# TODO: A adapter pour le latent space de LIA / mettre au format lightning ?
+# Garder la possiblité de tester sur keypoints de FOMM (en sécurité, dans un 1er temps)
+#######
 
-class VoxLipsDataset(Dataset):
+
+
+class VoxLipsDataset(Dataset): ## Renommer
     
     def __init__(self, dir_path, audio_dir=None, test=False, pyramid_level=0, kernel_size=2):
         super(VoxLipsDataset, self).__init__()
 
-        self.dir_path = dir_path
-        self.audio_dir = dir_path
-        if audio_dir is not None:
-            self.audio_dir = audio_dir
+        ### Instantiatin paramètres de classe
 
-        self.transform = not test
-        self.pyramid_level = pyramid_level
-        self.kernel_size = kernel_size
+        # self.dir_path = dir_path
+        # self.audio_dir = dir_path
+        # if audio_dir is not None:
+        #     self.audio_dir = audio_dir
 
-        self.suff = '_kpc'
+        # self.transform = not test
 
-        forbidden_id = 'id10292#ENIHEvg_VLM' ## For some reason there's an issue with this one
-        self.vid_id = [f.split(self.suff)[0] for f in os.listdir(dir_path) if f.endswith(self.suff) and not forbidden_id in f]
+        ## Ces 2 derniers paramètres permettent de construire la pyramide gaussienne directement dans le dataloader
+        # self.pyramid_level = pyramid_level
+        # self.kernel_size = kernel_size
+
+        # --------
+
+        ## Problème avec le sample suivant pour les landmarks
+        # -> TODO prévoir un méchanisme pour écarter les samples défaillants
+        # forbidden_id = 'id10292#ENIHEvg_VLM' ## For some reason there's an issue with this one
+
+        # --------
+
+        ## Liste des ids qui forment le dataset
+        # self.vid_id = [f.split(self.suff)[0] for f in os.listdir(dir_path) if f.endswith(self.suff) and not forbidden_id in f]
 
 
     def __len__(self):
@@ -31,49 +50,87 @@ class VoxLipsDataset(Dataset):
     
     
     def __getitem__(self, idx):
+        ###
+        ## Augmentation par symmétrie: TODO: à supprimer, sauf si on garde la possibilité d'entrainer sur les
+        ## keypoints de FOMM dans un 1er temps par sécurité 
+        ###
 
-        # Maybe flip
-        if self.transform:
-            if np.random.randint(low=0, high=2) == 1:
-                self.suff = '_kpflipc'
+        # # Maybe flip
+        # if self.transform:
+        #     if np.random.randint(low=0, high=2) == 1:
+        #         self.suff = '_kpflipc'
 
-        ### Keypoints
-        fp = os.path.join(self.dir_path, self.vid_id[idx] + self.suff)
-        if not os.path.isfile(fp):
-            fp = fp.replace('flip', '')
-        with open(fp, 'rb') as f:
-            ldks = pickle.load(f) 
-        ldks = moving_avg_with_reflect_pad(ldks, 3)
+        # --------
+
+        ###
+        ## Loading du sample à partir de l'id TODO: à remplacer 
+        ###
+
+        # ### Keypoints
+        # fp = os.path.join(self.dir_path, self.vid_id[idx] + self.suff)
+        # if not os.path.isfile(fp):
+        #     fp = fp.replace('flip', '')
+        # with open(fp, 'rb') as f:
+        #     x = pickle.load(f)
+
+        # --------
+
+        ###
+        ### Smoothing (possible jitter après l'encoder qu'on veut supprimer), on garde ? 
+        ###   
+        x = moving_avg_with_reflect_pad(x, 3)
         
-        if self.transform:
+        # --------
 
-            ## Rescaling
-            ldks = rescale_kp(ldks)
-            ## Translation
-            ldks = translate_kp(ldks)
+        ###
+        ## Data augmentation: TODO: à supprimer sauf si on expérimente avec les keypoints de FOMM
+        ###
+        # if self.transform:
 
-        ### Audio
+        #     ## Rescaling
+        #     x = rescale_kp(x)
+        #     ## Translation
+        #     x = translate_kp(x)
 
-        with open(os.path.join(self.audio_dir, self.vid_id[idx].replace('os_', '').replace('a2h_', '') + '_audiofeats'), 'rb') as f:
-            audio = pickle.load(f)
-        audio = audio[:, -26:]
+        # --------
 
-        if self.transform:
-            # Random signal power shift
-            rdm_inc_range = 0.1 * (audio.max() - audio.min()).item()
-            rdm_inc = np.random.uniform(-rdm_inc_range, rdm_inc_range)
-            audio += rdm_inc
+        ###
+        ## TODO: Loading du fichier audio correspondant
+        ###
+        # with open(os.path.join(...), 'rb') as f:
+        #     audio = pickle.load(f)
 
-        ## Time pyramid level selection
-        for _ in range(self.pyramid_level):
-            ldks = moving_avg_with_reflect_pad(ldks, n=self.kernel_size)[::2]
-            audio = moving_avg_with_reflect_pad(audio, n=self.kernel_size)[::2]
+        # --------
 
-        # Convert to tensor
-        sample = torch.Tensor(ldks)
-        melspec = torch.Tensor(audio)
+        ###
+        ## Data augmentation pour audio, on garde ?
+        ###
+        # if self.transform:
+        #     # Random signal power shift
+        #     rdm_inc_range = 0.1 * (audio.max() - audio.min()).item()
+        #     rdm_inc = np.random.uniform(-rdm_inc_range, rdm_inc_range)
+        #     audio += rdm_inc
+
+        # --------
+
+        ###
+        ## Gaussian pyramid + to torch, on garde ?
+        ###
+        # ## Time pyramid level selection
+        # for _ in range(self.pyramid_level):
+        #     ldks = moving_avg_with_reflect_pad(ldks, n=self.kernel_size)[::2]
+        #     audio = moving_avg_with_reflect_pad(audio, n=self.kernel_size)[::2]
+
+        # --------
+        
+        # # Convert to tensor
+        # sample = torch.Tensor(ldks)
+        # melspec = torch.Tensor(audio)
 
         return (sample, melspec)
+    
+
+### TODO dessous: fonctions non utilisées à supprimer
 
 
 def moving_avg_with_reflect_pad(a, n):

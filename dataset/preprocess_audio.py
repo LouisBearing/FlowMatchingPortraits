@@ -5,6 +5,13 @@ from scipy.io import wavfile
 import python_speech_features
 from argparse import ArgumentParser
 
+######
+####
+### Fonctions pour le processing des fichiers audio
+####
+# A l'origine plusieurs options possibles selon les features voulues: mfcc, mel bank energy, ...
+# En pratique 26 logfbank apportent déjà une qualité suffisante 
+#######
 
 def get_audio_feature_from_audio(audio_dir, file, style=1):
     '''
