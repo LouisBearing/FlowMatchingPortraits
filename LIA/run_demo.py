@@ -9,6 +9,8 @@ from PIL import Image
 from pathlib import Path
 from tqdm import tqdm
 
+import imageio
+
 
 def load_image(filename, size):
     img = Image.open(filename).convert('RGB')
@@ -70,8 +72,15 @@ class Demo(nn.Module):
         os.makedirs(self.save_path, exist_ok=True)
         self.save_path = os.path.join(self.save_path, Path(args.source_path).stem + '_' + Path(args.driving_path).stem + '.mp4')
         self.img_source = img_preprocessing(args.source_path, args.size).cuda()
-        self.vid_target, self.fps = vid_preprocessing(args.driving_path)
-        self.vid_target = self.vid_target.cuda()
+        # self.vid_target, self.fps = vid_preprocessing(args.driving_path)
+        # self.vid_target = self.vid_target.cuda()
+
+        reader = imageio.get_reader(args.driving_path)
+        self.fps = reader.get_meta_data()['fps']
+        vid_target = []
+        for frame in reader:
+            vid_target.append(torch.tensor(2 * frame.astype(np.float32) / 255 - 1.0))
+        self.vid_target = torch.stack(vid_target).permute(0, 3, 1, 2)[None].cuda()
 
     def run(self):
 

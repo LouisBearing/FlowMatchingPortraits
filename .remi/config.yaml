@@ -32,13 +32,13 @@ desktop:
     # If 'false', the session will be closed when the job is over and stdout/stderr will be
     # lost.
     # CAUTION: If true, you will have to manually re-attach and close the session.
-    keep_session_alive: false
+    keep_session_alive: true
 
 
 # Bastion used to ssh into Inria resources
 bastion:
   enable: true
-  hostname: ssh-gra.inra.fr
+  hostname: ssh-gra.inria.fr
   username: lairale
 
 
@@ -57,6 +57,7 @@ singularity:
   # Example:
   #     /path_on_host/my_data: /path_in_container/my_data
   bindings:
+    /scratch/mensa/lairale/.remi_projects/video-preprocessing: /ms_sync
 
   # Whether to bind beegfs. (It will be available as `/beegfs/` in the container).
   bind_beegfs: false

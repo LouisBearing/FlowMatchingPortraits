@@ -15,5 +15,7 @@ venv/
 *.sif
 build-temp-*
 .pytest_cache/
-Lia/
 /*.ipynb
+yt-dlp
+temp_folder_vox_dl/
+vox_lia_features_ds/
