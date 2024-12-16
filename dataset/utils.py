@@ -5,6 +5,16 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation, FFMpegWriter
 
 
+######
+####
+### "Utility" functions qui servaient d'abord pour la data augmentation pour les landmarks / keypoints
+####
+# Traduire ces fonctions dans l'espace latent de LIA est probablement très compliqué, peut-être y a-t-il des
+# invariances mais comment les découvrir ???
+# TODO: Probablement à suppprimer en grande partie, voire en intégralité
+#######
+
+
 def affine_matrix(scale_factor, translation_vect, dim):
     if type(scale_factor) != np.ndarray:
         if dim == 3:

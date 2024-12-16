@@ -3,3 +3,10 @@
 
 # Weights
 LIA/checkpoints
+inception/
+
+# FOMM
+fomm/
+
+# remi
+.remi/
