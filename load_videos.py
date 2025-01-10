@@ -15,6 +15,8 @@ from argparse import ArgumentParser
 from skimage import img_as_ubyte
 from skimage.transform import resize
 import pickle
+import librosa
+import soundfile as sf
 warnings.filterwarnings("ignore")
 
 from LIA.networks.generator import Generator
@@ -39,8 +41,11 @@ def run(data):
 
     # Checking if already processed
     processed_vids = []
+    search_key = '/*lia_feat' + suff
+    if args.audio_only:
+        search_key = '.wav'
     for partition in ['test', 'train']:
-        processed_vids.extend(np.unique([f.split('#')[1] for f in glob.glob(os.path.join(args.out_folder, partition) + '/*lia_feat' + suff)]))
+        processed_vids.extend(np.unique([f.split('#')[1] for f in glob.glob(os.path.join(args.out_folder, partition) + search_key)]))
 
     if video_id.split('#')[0] in processed_vids:
         print(f'~~~~Vid id {video_id} already done, going to next vid~~~~')
@@ -57,7 +62,7 @@ def run(data):
     else:
         first_part = ""
     first_part = first_part + '#'.join(video_id.split('#')[::-1])
-    placeholder_path = os.path.join(args.out_folder, partition, first_part + '#' + 'lia_feat' + suff)
+    placeholder_path = os.path.join(args.out_folder, partition, first_part + '#' + '_placeholder_' + 'lia_feat' + suff)
     with open(placeholder_path, 'wb') as f:
         pickle.dump([], f)
     
@@ -84,49 +89,64 @@ def run(data):
        print ('Can not load video %s, broken link' % video_id.split('#')[0])
        return
     
-    # Load Lia model
-    lia_gen = Generator(256, 512, 20, 1).cuda()
-    weight = torch.load(args.model_path, map_location=lambda storage, loc: storage)['gen']
-    lia_gen.load_state_dict(weight)
-    lia_gen.eval()
+    ####
+    ### Either extract audio or LIA features
+    ####
 
-    reader = imageio.get_reader(vid_path)
-    fps = reader.get_meta_data()['fps']
+    ## Audio
+    if args.audio_only:
+        librosa_data, freq = librosa.load(vid_path, sr=None)
+        for entry in all_chunks_dict:
+            s_idx = int(freq * entry['start'] / ref_fps)
+            e_idx = int(freq * entry['end'] / ref_fps)
+            path = first_part + '#' + str(entry['start']).zfill(6) + '#' + str(entry['end']).zfill(6)
+            sf.write(os.path.join(args.out_folder, partition, path + '.wav'), librosa_data[s_idx:e_idx], freq)
 
-    for i, frame in enumerate(reader):
+    ## LIA motion features
+    else:
+        # Load Lia model
+        lia_gen = Generator(256, 512, 20, 1).cuda()
+        weight = torch.load(args.model_path, map_location=lambda storage, loc: storage)['gen']
+        lia_gen.load_state_dict(weight)
+        lia_gen.eval()
 
+        reader = imageio.get_reader(vid_path)
+        fps = reader.get_meta_data()['fps']
+
+        for i, frame in enumerate(reader):
+
+            for entry in all_chunks_dict:
+
+                if (i * ref_fps >= entry['start'] * fps) and (i * ref_fps < entry['end'] * fps):
+                    left, top, right, bot = entry['bbox']
+                    left = int(left / (ref_width / frame.shape[1]))
+                    top = int(top / (ref_height / frame.shape[0]))
+                    right = int(right / (ref_width / frame.shape[1]))
+                    bot = int(bot / (ref_height / frame.shape[0]))
+                    crop = frame[top:bot, left:right]
+
+                    if args.image_shape is not None:
+                        crop = img_as_ubyte(resize(crop, args.image_shape, anti_aliasing=True))
+
+                    with torch.no_grad():
+                        if args.flip:
+                            flipped_crop = np.flip(crop, axis=1)
+                            flipped_crop = torch.tensor(2 * flipped_crop.astype(np.float32) / 255 - 1.0).permute(2, 0, 1)[None].cuda()
+                            lia_feats = lia_gen.enc.enc_motion(flipped_crop)
+                        else:
+                            crop = torch.tensor(2 * crop.astype(np.float32) / 255 - 1.0).permute(2, 0, 1)[None].cuda()
+                            lia_feats = lia_gen.enc.enc_motion(crop)
+                    entry['lia_feat'].append(lia_feats)
+    
         for entry in all_chunks_dict:
 
-            if (i * ref_fps >= entry['start'] * fps) and (i * ref_fps < entry['end'] * fps):
-                left, top, right, bot = entry['bbox']
-                left = int(left / (ref_width / frame.shape[1]))
-                top = int(top / (ref_height / frame.shape[0]))
-                right = int(right / (ref_width / frame.shape[1]))
-                bot = int(bot / (ref_height / frame.shape[0]))
-                crop = frame[top:bot, left:right]
-
-                if args.image_shape is not None:
-                    crop = img_as_ubyte(resize(crop, args.image_shape, anti_aliasing=True))
-
-                with torch.no_grad():
-                    if args.flip:
-                        flipped_crop = np.flip(crop, axis=1)
-                        flipped_crop = torch.tensor(2 * flipped_crop.astype(np.float32) / 255 - 1.0).permute(0, 3, 1, 2)[None].cuda()
-                        lia_feats = lia_gen.enc.enc_motion(flipped_crop)
-                    else:
-                        crop = torch.tensor(2 * crop.astype(np.float32) / 255 - 1.0).permute(2, 0, 1)[None].cuda()
-                        lia_feats = lia_gen.enc.enc_motion(crop)
-                entry['lia_feat'].append(lia_feats)
-    
-    for entry in all_chunks_dict:
-
-        # Save features
-        try:
-            path = first_part + '#' + str(entry['start']).zfill(6) + '#' + str(entry['end']).zfill(6)
-            with open(os.path.join(args.out_folder, partition, path + 'lia_feat' + suff), 'wb') as f:
-                pickle.dump(torch.stack(entry['lia_feat']), f)
-        except ValueError:
-            continue
+            # Save features
+            try:
+                path = first_part + '#' + str(entry['start']).zfill(6) + '#' + str(entry['end']).zfill(6)
+                with open(os.path.join(args.out_folder, partition, path + 'lia_feat' + suff), 'wb') as f:
+                    pickle.dump(torch.stack(entry['lia_feat']), f)
+            except:
+                continue
 
     rem = [os.remove(os.path.join(args.video_folder, f)) for f in os.listdir(args.video_folder) if video_id.split('#')[0] in f]
     os.remove(placeholder_path)
@@ -157,11 +177,22 @@ if __name__ == "__main__":
     parser.add_argument("--flip", default=False, action='store_true', help='Horizontal flip for data augmentation')
     parser.add_argument("--image_shape", default=(256, 256), type=lambda x: tuple(map(int, x.split(','))),
                         help="Image shape, None for no resize")
+    parser.add_argument('--audio_only', action='store_true', default=False)
 
     args = parser.parse_args()
 
     if not os.path.exists(args.video_folder):
         os.makedirs(args.video_folder)
+
+    # print(f'DOWLOADING to {args.video_folder}')
+
+    # vid = 'eFrsoyMcrc0'
+    # video_path = os.path.join(args.video_folder, vid + "_temp" + ".mp4")
+    # subprocess.call(["./yt-dlp",
+    #                  "https://www.youtube.com/watch?v=" + vid, "--output",
+    #                  video_path])
+    # exists = os.path.exists(video_path)
+    # print(f'Succes?: {exists}')
 
     df = pd.read_csv(args.metadata)
     video_ids = set(df['video_id'])

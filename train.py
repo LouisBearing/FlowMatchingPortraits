@@ -7,7 +7,7 @@ from metrics import *
 from nets.utils import *
 from nets.trainer import * # TODO---> supprimer classe trainer, on implémente directement le modèle génératif
 # cf nets.trainer et nets.networks
-from dataset.vox_lips_dataset import *
+from dataset.vox_dataset import *
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
