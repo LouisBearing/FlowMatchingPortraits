@@ -1,37 +1,33 @@
-import torch
-import os
+import torch, os, glob, pickle
 import numpy as np
-import pickle
 from torch.utils.data import Dataset
-from .utils import *
+# from .utils import *
 
 ######
 ####
 ### La classe principale pour le chargement des données
 ####
-# TODO: A adapter pour le latent space de LIA / mettre au format lightning ?
+# TODO: Lightning ?
 # Garder la possiblité de tester sur keypoints de FOMM (en sécurité, dans un 1er temps)
 #######
 
 
 
-class VoxLipsDataset(Dataset): ## Renommer
+class VoxDataset(Dataset):
     
-    def __init__(self, dir_path, audio_dir=None, test=False, pyramid_level=0, kernel_size=2):
-        super(VoxLipsDataset, self).__init__()
+    def __init__(self, motion_feat_dir, audio_dir, test=False, pyramid_level=0, kernel_size=2):
+        super(VoxDataset, self).__init__()
 
-        ### Instantiatin paramètres de classe
+        ### Instantiation paramètres de classe
 
-        # self.dir_path = dir_path
-        # self.audio_dir = dir_path
-        # if audio_dir is not None:
-        #     self.audio_dir = audio_dir
+        self.motion_feat_dir = motion_feat_dir
+        self.audio_dir = audio_dir
 
-        # self.transform = not test
+        self.transform = not test
 
-        ## Ces 2 derniers paramètres permettent de construire la pyramide gaussienne directement dans le dataloader
-        # self.pyramid_level = pyramid_level
-        # self.kernel_size = kernel_size
+        # Ces 2 derniers paramètres permettent de construire la pyramide gaussienne directement dans le dataloader
+        self.pyramid_level = pyramid_level
+        self.kernel_size = kernel_size
 
         # --------
 
@@ -42,7 +38,7 @@ class VoxLipsDataset(Dataset): ## Renommer
         # --------
 
         ## Liste des ids qui forment le dataset
-        # self.vid_id = [f.split(self.suff)[0] for f in os.listdir(dir_path) if f.endswith(self.suff) and not forbidden_id in f]
+        self.vid_id = glob.glob(motion_feat_dir + '/*lia_feat')
 
 
     def __len__(self):
@@ -50,35 +46,38 @@ class VoxLipsDataset(Dataset): ## Renommer
     
     
     def __getitem__(self, idx):
+
         ###
-        ## Augmentation par symmétrie: TODO: à supprimer, sauf si on garde la possibilité d'entrainer sur les
-        ## keypoints de FOMM dans un 1er temps par sécurité 
+        ## Augmentation par symmétrie
         ###
 
-        # # Maybe flip
-        # if self.transform:
-        #     if np.random.randint(low=0, high=2) == 1:
-        #         self.suff = '_kpflipc'
+        # Maybe flip
+        flip = False
+        if self.transform:
+            if np.random.randint(low=0, high=2) == 1:
+                flip = True
 
         # --------
 
         ###
-        ## Loading du sample à partir de l'id TODO: à remplacer 
+        ## Loading du sample à partir de l'id 
         ###
 
-        # ### Keypoints
-        # fp = os.path.join(self.dir_path, self.vid_id[idx] + self.suff)
-        # if not os.path.isfile(fp):
-        #     fp = fp.replace('flip', '')
-        # with open(fp, 'rb') as f:
-        #     x = pickle.load(f)
+        ### Load LIA features
+        motion_feat_path = self.vid_id[idx]
+        if flip:
+            motion_feat_path += '_flip'
+        if not os.path.isfile(motion_feat_path):
+            motion_feat_path = motion_feat_path.replace('_flip', '')
+        with open(motion_feat_path, 'rb') as f:
+            motion_feat = pickle.load(f).squeeze() # Shape len, 1, 20 --> len, 20
 
         # --------
 
-        ###
-        ### Smoothing (possible jitter après l'encoder qu'on veut supprimer), on garde ? 
-        ###   
-        x = moving_avg_with_reflect_pad(x, 3)
+        # ###
+        # ### Smoothing (possible jitter après l'encoder qu'on veut supprimer), on garde ? 
+        # ###   
+        # motion_feat = moving_avg_with_reflect_pad(motion_feat, 3)
         
         # --------
 
@@ -88,17 +87,18 @@ class VoxLipsDataset(Dataset): ## Renommer
         # if self.transform:
 
         #     ## Rescaling
-        #     x = rescale_kp(x)
+        #     motion_feat = rescale_kp(motion_feat)
         #     ## Translation
-        #     x = translate_kp(x)
+        #     motion_feat = translate_kp(motion_feat)
 
         # --------
 
-        ###
-        ## TODO: Loading du fichier audio correspondant
-        ###
-        # with open(os.path.join(...), 'rb') as f:
-        #     audio = pickle.load(f)
+        ##
+        # Loading du fichier audio correspondant
+        ##
+        file_id = os.path.basename(motion_feat_path.replace('_flip', '')).replace('lia_feat', '')
+        with open(os.path.join(self.audio_dir, file_id + '_audiofeats'), 'rb') as f:
+            audio_feat = pickle.load(f)[:, -26:]
 
         # --------
 
@@ -114,23 +114,23 @@ class VoxLipsDataset(Dataset): ## Renommer
         # --------
 
         ###
-        ## Gaussian pyramid + to torch, on garde ?
+        ## Gaussian pyramid
         ###
-        # ## Time pyramid level selection
-        # for _ in range(self.pyramid_level):
-        #     ldks = moving_avg_with_reflect_pad(ldks, n=self.kernel_size)[::2]
-        #     audio = moving_avg_with_reflect_pad(audio, n=self.kernel_size)[::2]
+        ## Time pyramid level selection
+        if self.pyramid_level > 0:
+            motion_feat = motion_feat.numpy()
+        for _ in range(self.pyramid_level):
+            motion_feat = moving_avg_with_reflect_pad(motion_feat, n=self.kernel_size)[::2]
+            audio_feat = moving_avg_with_reflect_pad(audio_feat, n=self.kernel_size)[::2]
 
         # --------
         
-        # # Convert to tensor
-        # sample = torch.Tensor(ldks)
-        # melspec = torch.Tensor(audio)
+        # Convert to tensor
+        if self.pyramid_level > 0:
+            motion_feat = torch.from_numpy(motion_feat)
+        audio_feat = torch.from_numpy(audio_feat)
 
-        return (sample, melspec)
-    
-
-### TODO dessous: fonctions non utilisées à supprimer
+        return (motion_feat, audio_feat)
 
 
 def moving_avg_with_reflect_pad(a, n):
@@ -141,12 +141,16 @@ def moving_avg_with_reflect_pad(a, n):
         return a
     n_pads = int((n - 1) / 2)
     padding = (n_pads, n_pads + 1),
-    for i in range(len(a.shape) - 1):
+    for _ in range(len(a.shape) - 1):
         padding += (0,0),
     b = np.pad(a, padding, mode='reflect')
     b = np.cumsum(b, axis=0)
     b[n:] = b[n:] - b[:-n]
     return b[n - 1:n - 1 + len(a)] / n
+
+
+
+### TODO dessous: fonctions non utilisées à supprimer
 
 
 def get_theta_y(ldks):

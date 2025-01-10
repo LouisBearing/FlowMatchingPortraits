@@ -18,4 +18,7 @@ build-temp-*
 /*.ipynb
 yt-dlp
 temp_folder_vox_dl/
+temp_folder_vox_dl_flip/
 vox_lia_features_ds/
+vox_audio_files/
+results/

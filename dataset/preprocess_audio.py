@@ -11,7 +11,9 @@ from argparse import ArgumentParser
 ####
 # A l'origine plusieurs options possibles selon les features voulues: mfcc, mel bank energy, ...
 # En pratique 26 logfbank apportent déjà une qualité suffisante 
+# TODO: A garder, refacto possible
 #######
+
 
 def get_audio_feature_from_audio(audio_dir, file, style=1):
     '''

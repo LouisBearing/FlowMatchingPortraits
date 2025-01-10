@@ -32,7 +32,7 @@ desktop:
     # If 'false', the session will be closed when the job is over and stdout/stderr will be
     # lost.
     # CAUTION: If true, you will have to manually re-attach and close the session.
-    keep_session_alive: true
+    keep_session_alive: false
 
 
 # Bastion used to ssh into Inria resources
